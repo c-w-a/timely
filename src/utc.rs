@@ -5,13 +5,12 @@
 // by calculating a fixed-trim median on several (13)
 // stratum-1 ntp servers in Canada
 
+use crate::analysis;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, stream::FuturesUnordered};
 use rsntp::AsyncSntpClient;
 use tokio::time::{Duration, timeout};
-
-mod analysis;
 
 const ANALYSIS: bool = true;
 
