@@ -51,7 +51,7 @@ fn calculate_trimmed_median(
     let median = calculate_median(datetimes)?;
     let kept_datetimes: Vec<DateTime<Utc>> = datetimes
         .iter()
-        .cloned()
+        .copied()
         .filter(|dt| (*dt - median).num_milliseconds().abs() <= cutoff_ms)
         .collect();
     if kept_datetimes.len() < minimum_keep {
@@ -101,7 +101,7 @@ pub async fn fetch_current_utc_datetime(
         .ok_or_else(|| anyhow!("not enough agreeing servers for consensus"))?;
 
     if ANALYSIS {
-        let median = calculate_median(&datetimes);
+        let median = calculate_median(&datetimes).expect("error calculating median in analysis");
         analysis::analyse_utc_fetch(
             current_utc_datetime,
             &successful_queries,

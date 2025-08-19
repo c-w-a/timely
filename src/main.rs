@@ -3,6 +3,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 
+mod analysis;
 mod utc;
 
 fn main() -> Result<()> {
