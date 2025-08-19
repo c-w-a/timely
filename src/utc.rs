@@ -11,6 +11,10 @@ use futures::{StreamExt, stream::FuturesUnordered};
 use rsntp::AsyncSntpClient;
 use tokio::time::{Duration, timeout};
 
+mod analysis;
+
+const ANALYSIS: bool = true;
+
 // stratum-1 ntp server hosts in Canada
 const HOSTS: [&str; 13] = [
     "clock.uregina.ca:123",             // University of Regina (Regina, SK)
@@ -29,22 +33,23 @@ const HOSTS: [&str; 13] = [
 ];
 
 // calculate median
-fn calculate_median(mut datetimes: Vec<DateTime<Utc>>) -> Option<DateTime<Utc>> {
+fn calculate_median(datetimes: &[DateTime<Utc>]) -> Option<DateTime<Utc>> {
     if datetimes.is_empty() {
         return None;
     }
-    datetimes.sort_unstable();
-    Some(datetimes[datetimes.len() / 2])
+    let mut dt_vec = datetimes.to_vec();
+    dt_vec.sort_unstable();
+    Some(dt_vec[dt_vec.len() / 2])
 }
 
-// calculate trimmed median using a fixed cutoff in ms to filter outliers
+// calculate trimmed median using a fixed cutoff in ms to trim outliers
 fn calculate_trimmed_median(
     datetimes: &[DateTime<Utc>],
     cutoff_ms: i64,
     minimum_keep: usize,
 ) -> Option<DateTime<Utc>> {
-    let median = calculate_median(datetimes.to_vec())?;
-    let kept_datetimes: Vec<_> = datetimes
+    let median = calculate_median(datetimes)?;
+    let kept_datetimes: Vec<DateTime<Utc>> = datetimes
         .iter()
         .cloned()
         .filter(|dt| (*dt - median).num_milliseconds().abs() <= cutoff_ms)
@@ -52,7 +57,7 @@ fn calculate_trimmed_median(
     if kept_datetimes.len() < minimum_keep {
         return None;
     }
-    calculate_median(kept_datetimes)
+    calculate_median(&kept_datetimes)
 }
 
 // query an ntp server
@@ -71,21 +76,21 @@ pub async fn fetch_current_utc_datetime(
     for &host in &HOSTS {
         let timeout_duration = Duration::from_millis(per_host_timeout_ms);
         pending_queries.push(async move {
-            let response: Result<DateTime<Utc>> =
+            let outcome: Result<DateTime<Utc>> =
                 match timeout(timeout_duration, query_ntp_server(host)).await {
                     Ok(Ok(dt)) => Ok(dt),
                     Ok(Err(e)) => Err(anyhow!("{host}: {e}")),
                     Err(_) => Err(anyhow!("{host}: TIMEOUT")),
                 };
-            (host, response)
+            (host, outcome)
         });
     }
 
     let mut successful_queries: Vec<(&str, DateTime<Utc>)> = Vec::new();
     let mut failed_queries: Vec<String> = Vec::new();
 
-    while let Some((host, response)) = pending_queries.next().await {
-        match response {
+    while let Some((host, outcome)) = pending_queries.next().await {
+        match outcome {
             Ok(dt) => successful_queries.push((host, dt)),
             Err(e) => failed_queries.push(e.to_string()),
         }
@@ -94,6 +99,17 @@ pub async fn fetch_current_utc_datetime(
     let datetimes: Vec<DateTime<Utc>> = successful_queries.iter().map(|&(_, dt)| dt).collect();
     let current_utc_datetime = calculate_trimmed_median(&datetimes, cutoff_ms, minimum_keep)
         .ok_or_else(|| anyhow!("not enough agreeing servers for consensus"))?;
+
+    if ANALYSIS {
+        let median = calculate_median(&datetimes);
+        analysis::analyse_utc_fetch(
+            current_utc_datetime,
+            &successful_queries,
+            &failed_queries,
+            cutoff_ms,
+            median,
+        );
+    }
 
     Ok(current_utc_datetime)
 }
