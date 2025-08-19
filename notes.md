@@ -1,0 +1,8 @@
+- split out launch/collect queries functions
+- is the analysis function getting good info to figure out the median host (initial and final)
+- write the analysis function so it a) prints and b) updates a JSON file for a frontend map/visualization
+- figure out frontend language/framework
+- make frontend map/visualization
+- program continuous sync clock in Rust
+- make frontend clock visualization
+- ..?
